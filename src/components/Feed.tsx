@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "../transport";
+import { invoke, isWeb } from "../transport";
 import { api, cover, fmt, fmtTime, isMobile } from "../api";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
@@ -193,7 +193,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   /* 分享：复制播放链接 */
   const shareLink = () => {
-    const u = kind === "post" ? (posts[curId]?.video_url || meta.title) : `https://huangguoai.com/video/${curId}/`;
+    const u = isWeb ? location.origin : kind === "post" ? (posts[curId]?.video_url || meta.title) : `https://huangguoai.com/video/${curId}/`;
     navigator.clipboard?.writeText(u).then(() => toast("链接已复制", "ok")).catch(() => {});
   };
 

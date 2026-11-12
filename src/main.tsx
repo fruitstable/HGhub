@@ -2,12 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AppProvider } from "./store";
-import { invoke } from "./transport";
+import { invoke, isWeb } from "./transport";
 import "./index.css";
 import { initPlaybackLog, installPlaybackPageEvents } from "./playbackDiagnostics";
 
 installPlaybackPageEvents();
-void initPlaybackLog();
+if (!isWeb) void initPlaybackLog();
 
 /* 运行期错误统一落到 debug.log，便于自查 */
 function report(kind: string, msg: string) {
