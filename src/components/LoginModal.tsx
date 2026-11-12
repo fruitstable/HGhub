@@ -1,3 +1,4 @@
+import { isWeb } from "../transport";
 import { useState } from "react";
 import { api, isMobile } from "../api";
 import type { User } from "../types";
@@ -32,6 +33,11 @@ export default function LoginModal() {
       setBusy(false);
     }
   };
+
+  if (isWeb) {
+    const content = <div className="p-6"><h2 className="text-lg font-semibold text-on">访客模式</h2><p className="text-sm text-mut mt-3">网页版无需登录即可浏览和播放。收藏与观看记录保存在当前浏览器；账号互动可使用客户端。</p><a href="/downloads/" className="inline-block mt-4 rounded-full bg-primary text-on-primary px-4 py-2">下载客户端</a><button className="ml-4 text-sm text-mut" onClick={() => setLoginOpen(false)}>继续浏览</button></div>;
+    return isMobile ? <Sheet open={loginOpen} onClose={() => setLoginOpen(false)}>{content}</Sheet> : <Modal open={loginOpen} onClose={() => setLoginOpen(false)}>{content}</Modal>;
+  }
 
   /* 移动端用底部抽屉，桌面端用居中弹窗 */
   const body = (

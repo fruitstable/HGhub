@@ -1,3 +1,4 @@
+import { isWeb } from "../transport";
 import { useEffect, useState } from "react";
 import { api, APP_VERSION, fmt, fmtTime, isMobile, platform } from "../api";
 import type { Detail } from "../types";
@@ -44,7 +45,13 @@ export default function Profile({ wide }: { wide: boolean }) {
 
       <div className="flex-1 scroll-y px-4 pt-2 pb-24">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
-        {user ? (
+        {isWeb ? (
+          <div className="rounded-(--r-lg) bg-s1 p-4 elev-1">
+            <div className="text-[16px] font-bold text-on">访客空间</div>
+            <p className="text-[12px] text-mut mt-2">直接浏览与播放，收藏和观看记录保存在此浏览器。</p>
+            <a href="/downloads/" className="inline-block mt-3 rounded-full bg-primary text-on-primary px-4 py-2 text-[12px] font-semibold">下载客户端</a>
+          </div>
+        ) : user ? (
           <div className="rounded-(--r-lg) bg-s1 p-4 elev-1 flex items-center gap-3.5 a-rise">
             <Avatar size={56} name={user.nickname} hue={280} ring />
             <div className="flex-1 min-w-0">

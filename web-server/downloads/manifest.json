@@ -1,0 +1,41 @@
+{
+  "version": "1.2.1",
+  "files": [
+    {
+      "name": "HGhub_1.2.1_x64-setup.exe",
+      "bytes": 2284403,
+      "sha256": "c8a079d0d2665626f7d0608d781748b4506f96d605024750b942ceafbe3275a6",
+      "url": "/downloads/files/HGhub_1.2.1_x64-setup.exe"
+    },
+    {
+      "name": "HGhub_1.2.1_x64_portable.zip",
+      "bytes": 2736020,
+      "sha256": "f02e4ddff4e15e28b0be0a4f4c41b4e48e8e8284844796d7bcac72c195a6b7bc",
+      "url": "/downloads/files/HGhub_1.2.1_x64_portable.zip"
+    },
+    {
+      "name": "HGhub_1.2.1_arm.apk",
+      "bytes": 6911755,
+      "sha256": "2aa0a16419ffadb827f7e8bb07467708d4ef39622338afd3e1dbfcab5051769e",
+      "url": "/downloads/files/HGhub_1.2.1_arm.apk"
+    },
+    {
+      "name": "HGhub_1.2.1_arm64.apk",
+      "bytes": 9225993,
+      "sha256": "9c3d28dc8f007356b9de40fc895111abdb40f229fedd432bf8754eff819e5217",
+      "url": "/downloads/files/HGhub_1.2.1_arm64.apk"
+    },
+    {
+      "name": "HGhub_1.2.1_x86_64.apk",
+      "bytes": 9885446,
+      "sha256": "319b9ff00bb2948017f0d83f877a09022d42287ff083d200c51e039ef7e65272",
+      "url": "/downloads/files/HGhub_1.2.1_x86_64.apk"
+    },
+    {
+      "name": "HGhub_1.2.1_universal.dmg",
+      "bytes": 5587764,
+      "sha256": "7baa42189d1339b1e874421c2d3a861ecf7801b2a76376331b82abfd8baaff2d",
+      "url": "/downloads/files/HGhub_1.2.1_universal.dmg"
+    }
+  ]
+}

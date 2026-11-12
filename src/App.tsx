@@ -18,6 +18,12 @@ import ResizeHandles from "./components/ResizeHandles";
 import { tracePlayback } from "./playbackDiagnostics";
 import { IGrid, IGridF, IHome, IHomeF, ISearch, IUser, IUserF, Logo } from "./icons";
 
+function WebDownloadsLink() {
+  const { fs, clean } = useStore();
+  if (!isWeb || fs || clean) return null;
+  return <a href="/downloads/" aria-label="下载客户端" className="fixed right-3 z-50 rounded-full px-4 py-2 text-[12px] font-semibold shadow-lg" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 54px)", background: "rgba(20,20,24,.92)", color: "#ffcf67", border: "1px solid rgba(255,207,103,.3)", backdropFilter: "blur(12px)" }}>↓ 下载客户端</a>;
+}
+
 /* ============ 底部标签栏（Android）—— 细瘦纯文字、低侵入 ============ */
 function TabBar() {
   const { tab, setTab, theme } = useStore();
@@ -279,6 +285,7 @@ export default function App() {
   return (
     <>
       {isMobile ? <MobileShell /> : <DesktopShell />}
+      <WebDownloadsLink />
       <LoginModal />
       <ToastHost />
       {/* 登录遮罩键盘处理占位 */}

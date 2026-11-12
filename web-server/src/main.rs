@@ -12,6 +12,7 @@ mod net;
 mod network_policy;
 #[path = "../../src-tauri/src/playback_log.rs"]
 mod playback_log;
+mod public_media;
 mod rpc;
 #[path = "../../src-tauri/src/session.rs"]
 mod session;
@@ -39,6 +40,9 @@ use tower_http::services::{ServeDir, ServeFile};
 #[derive(Clone)]
 struct AppState {
     api: Arc<api::Api>,
+    guest_api: Arc<api::Api>,
+    public: bool,
+    media_grants: Arc<Mutex<public_media::MediaGrants>>,
     password_hash: [u8; 32],
     sessions: Arc<Mutex<HashMap<String, Instant>>>,
     attempts: Arc<Mutex<Vec<Instant>>>,
@@ -82,7 +86,22 @@ async fn guard(State(s): State<AppState>, req: Request, next: Next) -> Response 
             return StatusCode::FORBIDDEN.into_response();
         }
     }
-    if path != "/login" && !authenticated(&s, req.headers()) {
+    let public_read = s.public
+        && (path.starts_with("/media/")
+            || (matches!(req.method().as_str(), "GET" | "HEAD")
+                && path != "/logout"
+                && !path.starts_with("/api/"))
+            || path
+                .strip_prefix("/api/invoke/")
+                .is_some_and(public_command));
+    if s.public && path.starts_with("/api/") && !public_read && !authenticated(&s, req.headers()) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"此操作仅管理员可用；公开网页版支持访客浏览与播放"})),
+        )
+            .into_response();
+    }
+    if path != "/login" && !public_read && !authenticated(&s, req.headers()) {
         return if path.starts_with("/api/") || path.starts_with("/media/") {
             (StatusCode::UNAUTHORIZED, Json(json!({"error":"请先登录"}))).into_response()
         } else {
@@ -162,27 +181,103 @@ async fn logout(State(s): State<AppState>, headers: HeaderMap) -> Response {
     )
         .into_response()
 }
+fn public_command(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "app_boot"
+            | "api_feed"
+            | "api_category"
+            | "api_rank"
+            | "api_search"
+            | "api_posts"
+            | "api_post"
+            | "api_video"
+            | "api_play"
+            | "api_comments"
+            | "api_post_comments"
+            | "line_state"
+            | "debug_log"
+    )
+}
 async fn invoke(
     State(s): State<AppState>,
+    headers: HeaderMap,
     Path(cmd): Path<String>,
-    Json(args): Json<serde_json::Value>,
+    Json(mut args): Json<serde_json::Value>,
 ) -> Response {
-    match rpc::dispatch(&s.api, &cmd, args).await {
-        Ok(v) => Json(v).into_response(),
+    let guest = s.public && !authenticated(&s, &headers);
+    if guest && cmd == "app_boot" {
+        return Json(json!({"user":null,"logged_in":false,"base":"","strict_security":true,"cli_relaxed":false,"public_access":true})).into_response();
+    }
+    if guest && cmd == "line_state" {
+        return Json(json!({"base":"","default":"","fixed":[]})).into_response();
+    }
+    if guest {
+        for key in ["size", "page"] {
+            if let Some(n) = args.get(key).and_then(|v| v.as_u64()) {
+                args[key] = json!(n.clamp(1, if key == "size" { 50 } else { 10000 }));
+            }
+        }
+    }
+    let api = if guest { &s.guest_api } else { &s.api };
+    match rpc::dispatch(api, &cmd, args).await {
+        Ok(mut v) => {
+            if guest {
+                s.media_grants.lock().unwrap().rewrite_api(&mut v, "");
+            }
+            Json(v).into_response()
+        }
         Err(_) => (
             StatusCode::BAD_GATEWAY,
-            Json(json!({"error":"请求失败，请检查服务器网络或切换线路"})),
+            Json(json!({"error":"请求失败，请稍后重试"})),
         )
             .into_response(),
     }
 }
-async fn proxy(Path(route): Path<String>, RawQuery(query): RawQuery) -> Response {
+async fn proxy(
+    State(s): State<AppState>,
+    headers: HeaderMap,
+    Path(route): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
     if !matches!(route.as_str(), "hls" | "seg" | "img") {
         return StatusCode::NOT_FOUND.into_response();
     }
-    media::handle(&format!("/{route}"), &query.unwrap_or_default(), "/media")
-        .await
-        .map(Body::from)
+    let query = query.unwrap_or_default();
+    let params: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
+        .into_owned()
+        .collect();
+    let guest = s.public && !authenticated(&s, &headers);
+    let actual = if let Some(token) = params.get("t") {
+        match s.media_grants.lock().unwrap().get(token, &route) {
+            Some(target) => url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("u", &target)
+                .finish(),
+            None => return StatusCode::FORBIDDEN.into_response(),
+        }
+    } else if guest {
+        return StatusCode::FORBIDDEN.into_response();
+    } else {
+        query
+    };
+    let mut response = media::handle(&format!("/{route}"), &actual, "/media").await;
+    if guest && response.status().is_success() {
+        if response.body().starts_with(b"#EXTM3U")
+            || response.body().starts_with(b"\xef\xbb\xbf#EXTM3U")
+        {
+            if let Ok(text) = std::str::from_utf8(response.body()) {
+                let replaced = s.media_grants.lock().unwrap().rewrite_playlist(text);
+                *response.body_mut() = replaced.into_bytes();
+                let length = response.body().len().to_string();
+                response
+                    .headers_mut()
+                    .insert(header::CONTENT_LENGTH, length.parse().unwrap());
+            }
+        }
+    } else if guest && !response.status().is_success() {
+        return (StatusCode::BAD_GATEWAY, "媒体暂时不可用").into_response();
+    }
+    response.map(Body::from)
 }
 fn router(s: AppState, dist: PathBuf) -> Router {
     Router::new()
@@ -213,6 +308,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     playback_log::bind(&data);
     let s = AppState {
         api: Arc::new(api::Api::new()),
+        guest_api: Arc::new(api::Api::new()),
+        public: std::env::var("HG_PUBLIC_ACCESS").as_deref() == Ok("true"),
+        media_grants: Default::default(),
         password_hash: Sha256::digest(password.as_bytes()).into(),
         sessions: Default::default(),
         attempts: Default::default(),
@@ -236,6 +334,9 @@ mod web_tests {
     fn state() -> AppState {
         AppState {
             api: Arc::new(api::Api::new()),
+            guest_api: Arc::new(api::Api::new()),
+            public: false,
+            media_grants: Default::default(),
             password_hash: Sha256::digest(b"test-password-long-enough").into(),
             sessions: Default::default(),
             attempts: Default::default(),
@@ -341,5 +442,51 @@ mod web_tests {
             .unwrap();
         assert_eq!(out.status(), StatusCode::SEE_OTHER);
         assert!(s.sessions.lock().unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn public_visitors_can_boot_but_cannot_use_admin_or_arbitrary_proxy() {
+        let mut s = state();
+        s.public = true;
+        let app = router(s, PathBuf::from("../dist-web"));
+        let request = |cmd: &str| {
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/invoke/{cmd}"))
+                .header("X-HG-Request", "1")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap()
+        };
+        let boot = app.clone().oneshot(request("app_boot")).await.unwrap();
+        assert_eq!(boot.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(boot.into_body(), 65536).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["public_access"], true);
+        assert!(v["user"].is_null());
+        for cmd in [
+            "api_login",
+            "api_register",
+            "line_set",
+            "security_set",
+            "cache_clear",
+            "net_diag",
+        ] {
+            assert_eq!(
+                app.clone().oneshot(request(cmd)).await.unwrap().status(),
+                StatusCode::FORBIDDEN,
+                "{cmd}"
+            );
+        }
+        for path in [
+            "/media/img?u=https%3A%2F%2Fexample.com%2Fa.jpg",
+            "/media/hls?t=not-issued",
+        ] {
+            let r = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        }
     }
 }
