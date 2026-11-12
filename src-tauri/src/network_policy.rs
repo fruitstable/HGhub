@@ -191,9 +191,34 @@ fn sort_ipv6_first(addrs: &mut [SocketAddr]) {
     addrs.sort_unstable_by_key(|addr| (addr.is_ipv4(), *addr));
 }
 
+/// Keep a proxy's usable FakeIP answer without ever connecting to its blocked companion answers.
+/// Ordinary mixed public/private DNS answers remain rejected in strict mode.
+fn pinned_dns_addresses(
+    mut addrs: Vec<SocketAddr>,
+    strict: bool,
+) -> Result<Vec<SocketAddr>, String> {
+    let fake_ipv4 = |ip: IpAddr| {
+        let v4 = match ip {
+            IpAddr::V4(ip) => Some(ip),
+            IpAddr::V6(ip) => ip.to_ipv4_mapped(),
+        };
+        v4.is_some_and(|ip| {
+            let [a, b, _, _] = ip.octets();
+            a == 198 && (b == 18 || b == 19)
+        })
+    };
+    if strict && addrs.iter().any(|addr| fake_ipv4(addr.ip())) {
+        addrs.retain(|addr| allowed_ip(addr.ip()));
+    }
+    check_addresses_with_mode(&addrs, strict)?;
+    sort_ipv6_first(&mut addrs);
+    addrs.dedup();
+    Ok(addrs)
+}
+
 pub async fn resolve_target(url: &Url, strict: bool) -> Result<Vec<SocketAddr>, String> {
     let port = url.port_or_known_default().ok_or("目标端口无效")?;
-    let mut addrs = match url.host().ok_or("目标缺少主机名")? {
+    let addrs = match url.host().ok_or("目标缺少主机名")? {
         Host::Ipv4(ip) => vec![SocketAddr::new(ip.into(), port)],
         Host::Ipv6(ip) => vec![SocketAddr::new(ip.into(), port)],
         Host::Domain(host) => tokio::time::timeout(
@@ -205,10 +230,7 @@ pub async fn resolve_target(url: &Url, strict: bool) -> Result<Vec<SocketAddr>, 
         .map_err(|_| "DNS 解析失败")?
         .collect(),
     };
-    sort_ipv6_first(&mut addrs);
-    addrs.dedup();
-    check_addresses_with_mode(&addrs, strict)?;
-    Ok(addrs)
+    pinned_dns_addresses(addrs, strict)
 }
 
 pub fn redirect_target(current: &Url, location: &str) -> Result<Url, String> {
@@ -348,6 +370,40 @@ mod tests {
             assert!(parse_target(raw).is_err(), "{raw}");
         }
         assert!(parse_target("http://198.18.0.1/video").is_ok());
+    }
+
+    #[test]
+    fn dual_stack_fakeip_drops_blocked_companions_before_pinning() {
+        let input = [
+            "198.18.0.99:443",
+            "[2001:2::65]:443",
+            "192.168.1.1:443",
+            "[::1]:443",
+        ]
+        .into_iter()
+        .map(|s| s.parse().unwrap())
+        .collect();
+        let selected = pinned_dns_addresses(input, true).unwrap();
+        assert_eq!(
+            selected,
+            vec!["198.18.0.99:443".parse::<SocketAddr>().unwrap()]
+        );
+        assert!(selected.iter().all(|a| allowed_ip(a.ip())));
+    }
+    #[test]
+    fn filtering_is_not_a_general_mixed_dns_bypass() {
+        let input = ["1.1.1.1:443", "192.168.1.1:443"]
+            .into_iter()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        assert!(pinned_dns_addresses(input, true).is_err());
+        let input = ["[2001:2::65]:443", "[::1]:443"]
+            .into_iter()
+            .map(|s| s.parse().unwrap())
+            .collect();
+        assert!(pinned_dns_addresses(input, true).is_err());
+        assert!(pinned_dns_addresses(vec![], true).is_err());
+        assert!(parse_target_with_mode("http://[2001:2::65]/", true).is_err());
     }
 
     #[test]

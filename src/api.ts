@@ -45,7 +45,12 @@ export const logLine = (msg: string) => invoke("debug_log", { msg }).catch(() =>
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
-    return (await invoke(cmd, args)) as T;
+    const result = (await invoke(cmd, args)) as T;
+    if (cmd === "api_feed") {
+      const items = (result as { items?: unknown[] } | null)?.items;
+      if (Array.isArray(items)) logLine(`[api] api_feed → ok (${items.length} items)`);
+    }
+    return result;
   } catch (e) {
     const msg = typeof e === "string" ? e : "请求失败，请检查网络";
     // 落盘完整错误链（dns error / connection refused / 证书错误…），toast 只显示截断版
