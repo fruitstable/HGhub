@@ -25,7 +25,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
     api.lineState().then((s) => setLineBase(s.base)).catch(() => {});
   };
   useEffect(readLine, []);
-  useEffect(() => { void initPlaybackLog(); }, []);
+  useEffect(() => { if (!isWeb) void initPlaybackLog(); }, []);
 
   const checkUpdate = async () => {
     setChecking(true);
@@ -97,6 +97,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
                 <div className="text-[10.5px] text-mut">{favs.length} 部收藏 · {history.length} 条观看记录</div>
               </div>
             </div>
+            {!isWeb && (
             <button onClick={() => setClearOpen(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IBroom size={16} /></span>
               <div className="flex-1">
@@ -105,6 +106,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               </div>
               <IChevR size={15} className="text-mut" />
             </button>
+            )}
           </Section>
 
           {!isWeb && <>
@@ -160,6 +162,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
 
           </>}
 
+          {!isWeb && <>
           <Section title="播放诊断">
             <div className="flex items-center gap-3 px-3.5 py-3">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IInfo size={16} /></span>
@@ -186,12 +189,14 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
             </button>
           </Section>
 
+          </>}
+
           <Section title="其他">
-            <button onClick={checkUpdate} disabled={checking} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
+            <button onClick={isWeb ? () => location.assign("/downloads/") : checkUpdate} disabled={checking} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable disabled:opacity-60">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IRefresh size={16} /></span>
               <div className="flex-1">
-                <div className="text-[12.5px] text-on">检查更新</div>
-                <div className="text-[10.5px] text-mut">{checking ? "检查中…" : `当前 v${APP_VERSION} · 对比 GitHub Release`}</div>
+                <div className="text-[12.5px] text-on">{isWeb ? "客户端下载" : "检查更新"}</div>
+                <div className="text-[10.5px] text-mut">{isWeb ? "查看版本与安装包" : checking ? "检查中…" : `当前 v${APP_VERSION} · 对比 GitHub Release`}</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </button>
@@ -238,12 +243,14 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               <span className="text-[12px] text-on/85">github.com/Minireel/HGhub</span>
               <span className="ml-auto text-[10.5px] text-primary">复制</span>
             </button>
+            {!isWeb && (
             <button onClick={() => { navigator.clipboard?.writeText("https://huangguoai.com").then(() => toast("站点地址已复制", "ok")).catch(() => {}); }}
               className="w-full flex items-center gap-2 py-2.5 text-left pressable">
               <ILink size={15} className="text-mut" />
               <span className="text-[12px] text-on/85">huangguoai.com</span>
               <span className="ml-auto text-[10.5px] text-primary">复制</span>
             </button>
+            )}
             <div className="flex items-center gap-2 py-2.5">
               <IInfo size={15} className="text-mut" />
               <span className="text-[12px] text-on/85">PolyForm Noncommercial 1.0.0</span>
