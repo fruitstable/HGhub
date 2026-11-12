@@ -1,3 +1,4 @@
+import { isWeb } from "../transport";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, APP_VERSION, hostOf, logLine, platform, type UpdateInfo } from "../api";
 import { useStore } from "../store";
@@ -106,6 +107,7 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
             </button>
           </Section>
 
+          {!isWeb && <>
           <Section title="网络">
             <button onClick={() => setLineOpen(true)} className="w-full flex items-center gap-3 px-3.5 py-3 text-left pressable">
               <span className="w-8 h-8 rounded-full bg-s3 flex items-center justify-center text-primary"><IBoltF size={16} /></span>
@@ -155,6 +157,8 @@ export default function Settings({ onBack, wide }: { onBack: () => void; wide: b
               <IChevR size={15} className="text-mut" />
             </button>
           </Section>
+
+          </>}
 
           <Section title="播放诊断">
             <div className="flex items-center gap-3 px-3.5 py-3">

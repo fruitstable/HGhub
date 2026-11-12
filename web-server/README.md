@@ -34,3 +34,9 @@ Building successfully alone does not prove deployment or real playback. Do not p
 ## Validation status before server setup
 
 The macOS local build passed 41 Rust tests (5 upstream network tests intentionally skipped), frontend type checks and a mobile-viewport Chromium login check. The real local feed request was blocked by this machine's mixed FakeIP/private DNS results. Real feed, HLS, segment, cover, public access and real iPhone Safari acceptance are still pending. A Linux Actions build prepares the deployment archive; it does not by itself certify playback or server deployment.
+
+## Public browsing and downloads
+
+Set `HG_PUBLIC_ACCESS=true` to permit anonymous browsing and playback. It defaults to private mode. Public requests use a separate guest API session; account changes, source changes, diagnostics and other administrative commands still require the site password. Public media uses bounded, opaque, expiring references minted from API responses and playlists; arbitrary public proxy URLs are rejected.
+
+Serve the included `downloads/` directory through Nginx at `/downloads/` and publish only the six installer files listed in `manifest.json` under `/downloads/files/`. Do not place credentials, signing keys or server configuration in this directory. Static downloads support HTTP Range and versioned caching. Keep the Rust listener on loopback.

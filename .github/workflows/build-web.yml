@@ -1,4 +1,4 @@
-name: Build private web server
+name: Build HGhub web server
 on:
   workflow_dispatch:
 jobs:
@@ -35,8 +35,8 @@ jobs:
         run: |
           mkdir -p artifacts/hghub-web
           cp web-server/target/release/hghub-web artifacts/hghub-web/
-          cp -r dist-web web-server/deploy artifacts/hghub-web/
-          cp web-server/README.md web-server/verify.py LICENSE artifacts/hghub-web/
+          cp -r dist-web web-server/deploy web-server/downloads artifacts/hghub-web/
+          cp web-server/README.md web-server/verify.py web-server/verify-public.py LICENSE artifacts/hghub-web/
           tar -C artifacts -czf hghub-web-linux-x64.tar.gz hghub-web
           sha256sum hghub-web-linux-x64.tar.gz
       - uses: actions/upload-artifact@v4
