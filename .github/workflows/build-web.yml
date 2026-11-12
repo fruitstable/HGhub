@@ -1,0 +1,46 @@
+name: Build private web server
+on:
+  workflow_dispatch:
+jobs:
+  web:
+    name: Linux web server (x64)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: web-server -> target
+          key: web-linux
+      - run: pnpm install --frozen-lockfile
+      - name: Check frontend and build HTTP transport
+        env:
+          VITE_WEB: "1"
+        run: |
+          pnpm exec tsc --noEmit
+          pnpm exec tsc --project tsconfig.tests.json
+          pnpm exec vite build --outDir dist-web
+      - name: Test Rust core and login gate
+        run: cargo test --locked --manifest-path web-server/Cargo.toml
+      - name: Build Linux service
+        run: cargo build --release --locked --manifest-path web-server/Cargo.toml
+      - name: Package service and frontend
+        run: |
+          mkdir -p artifacts/hghub-web
+          cp web-server/target/release/hghub-web artifacts/hghub-web/
+          cp -r dist-web web-server/deploy artifacts/hghub-web/
+          cp web-server/README.md web-server/verify.py LICENSE artifacts/hghub-web/
+          tar -C artifacts -czf hghub-web-linux-x64.tar.gz hghub-web
+          sha256sum hghub-web-linux-x64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hghub-web-linux-x64
+          path: hghub-web-linux-x64.tar.gz
+          if-no-files-found: error

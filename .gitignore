@@ -31,3 +31,9 @@ docs/API.md
 
 # Agent instructions (local)
 AGENTS.md
+
+/web-server/target/
+/web-server/data/
+/dist-web/
+
+__pycache__/
