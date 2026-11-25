@@ -40,3 +40,10 @@ The macOS local build passed 41 Rust tests (5 upstream network tests intentional
 Set `HG_PUBLIC_ACCESS=true` to permit anonymous browsing and playback. It defaults to private mode. Public requests use a separate guest API session; account changes, source changes, diagnostics and other administrative commands still require the site password. Public media uses bounded, opaque, expiring references minted from API responses and playlists; arbitrary public proxy URLs are rejected.
 
 Serve the included `downloads/` directory through Nginx at `/downloads/` and publish only the six installer files listed in `manifest.json` under `/downloads/files/`. Do not place credentials, signing keys or server configuration in this directory. Static downloads support HTTP Range and versioned caching. Keep the Rust listener on loopback.
+
+## 上游接口迁移
+
+上游已停用 `/api/edge/request` 时，可在 `/etc/hghub/server.env` 设置
+`HGHUB_API_TRANSPORT=direct` 并重启服务，改用同源 `/api/` 的直接 GET/POST 请求。
+默认仍使用原信封请求方式。两种方式共用 HTTPS、DNS 地址校验、重定向和凭证限制。
+切换前须在本机端口验证真实 feed、详情、封面、HLS、key 和视频分片，再上线复验。
