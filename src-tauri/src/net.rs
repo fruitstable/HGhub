@@ -430,7 +430,9 @@ fn edge_operation(path: &str) -> &'static str {
     let path = path.split('?').next().unwrap_or("");
     if path.starts_with("/api/videos/category/") {
         "category"
-    } else if path.starts_with("/api/videos/") && (path.ends_with("/play") || path.ends_with("/playback")) {
+    } else if path.starts_with("/api/videos/")
+        && (path.ends_with("/play") || path.ends_with("/playback"))
+    {
         "play"
     } else if path == "/api/videos" {
         "feed"
@@ -464,7 +466,23 @@ fn edge_redirect_target(
     network_policy::redirect_target(current, location)
 }
 
-/// 业务请求：走边缘信封。
+/// Keep both API transports on the validated origin and under /api/.
+fn api_request_url(origin: &str, path: &str, direct: bool) -> Result<String, String> {
+    let origin = normalize_base(origin).ok_or("业务请求必须使用安全 HTTPS 线路")?;
+    if !path.starts_with("/api/") || path.contains(['#', '\\']) {
+        return Err("业务请求路径无效".into());
+    }
+    let target = network_policy::parse_target(&format!("{origin}{path}"))?;
+    if target.origin().ascii_serialization() != origin || !target.path().starts_with("/api/") {
+        return Err("业务请求路径无效".into());
+    }
+    Ok(if direct {
+        target.to_string()
+    } else {
+        format!("{origin}/api/edge/request")
+    })
+}
+
 pub async fn edge(
     origin: &str,
     method: &str,
@@ -497,7 +515,10 @@ pub async fn edge(
         "content_type": ctype,
     });
 
-    let url = format!("{cur}/api/edge/request");
+    // The upstream retired the envelope endpoint. Opt in per deployment;
+    // desktop clients retain their existing default transport.
+    let direct = std::env::var("HGHUB_API_TRANSPORT").ok().as_deref() == Some("direct");
+    let url = api_request_url(&cur, path, direct)?;
     let referer = format!("{cur}/");
     let token = token.map(|s| s.to_string());
 
@@ -518,6 +539,7 @@ pub async fn edge(
         attempt += 1;
         let attempt = attempt;
         let envelope = envelope.clone();
+        let body = body.clone();
         let token = token.clone();
         let url = url.clone();
         let referer = referer.clone();
@@ -535,11 +557,19 @@ pub async fn edge(
                 for hop in 0..=5 {
                     let (target, client) = client_for(next.as_str()).await?;
                     target_host = target.host_str().unwrap_or("").to_string();
-                    let mut req = client
-                        .post(target.clone())
-                        .header("Accept", "application/json")
-                        .header("Referer", &referer)
-                        .json(&envelope);
+                    let mut req = if direct {
+                        let method = reqwest::Method::from_bytes(method.as_bytes())
+                            .map_err(|_| "业务请求方法无效".to_string())?;
+                        let request = client.request(method, target.clone());
+                        match &body {
+                            Some(body) => request.json(body),
+                            None => request,
+                        }
+                    } else {
+                        client.post(target.clone()).json(&envelope)
+                    }
+                    .header("Accept", "application/json")
+                    .header("Referer", &referer);
                     if let Some(t) = token.as_deref() {
                         if !t.is_empty() {
                             req = req.header("Authorization", format!("Bearer {t}"));
@@ -657,6 +687,28 @@ pub async fn fetch_bytes(url: &str) -> Result<(Option<String>, Vec<u8>), String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direct_transport_keeps_api_paths_on_validated_origin() {
+        let origin = "https://huangguoai.com";
+        assert_eq!(
+            api_request_url(origin, "/api/videos?page=1&size=8", true).unwrap(),
+            "https://huangguoai.com/api/videos?page=1&size=8"
+        );
+        assert_eq!(
+            api_request_url(origin, "/api/videos/12/episodes/1/playback", false).unwrap(),
+            "https://huangguoai.com/api/edge/request"
+        );
+        for path in [
+            "//example.com/api/videos",
+            "/api/../../private",
+            "/api/videos#secret",
+            "/api/\\private",
+        ] {
+            assert!(api_request_url(origin, path, true).is_err(), "{path}");
+        }
+        assert!(api_request_url("https://127.0.0.1", "/api/videos", true).is_err());
+    }
 
     #[tokio::test]
     async fn terminal_errors_do_not_retry_but_transient_failures_can_recover() {
